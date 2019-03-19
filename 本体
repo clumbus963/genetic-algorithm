@@ -14,13 +14,13 @@ def init(context):
     context.current_strategy = context.best_strategy # 当前策略
 
 def generate_strategy():
-    # 生成随机的策略，并且返回以一维数组存储的策略内容
-    maxb_s = ''.join('1' for x in range(7)) # 生成满足策略长度的最大二进制数，16表示策略长度
-    maxd_s = int(maxb_s,2) # 将最大二进制数转成十进制
+    # 生成随机的策略，并且返回以一维数组存储的策略内容/ランダムな戦略を生成し、一次元配列に格納されたポリシーコンテンツを返します
+    maxb_s = ''.join('1' for x in range(7)) # 生成满足策略长度的最大二进制数，16表示策略长度/ポリシーの長さを満たす最大の2進数を生成します。16はポリシーの長さを示します
+    maxd_s = int(maxb_s,2) # 将最大二进制数转成十进制/最大の2進数を10進数に変換
     rand_s = random.randint(0,maxd_s) # 生成低于最大十进制数的一个随机数/ランダム数(>最大十进制数)を生成
-    t = str(bin(rand_s))[2:] # 将随机的十进制数转成二进制
-    ranb_s = '{0:0>7}'.format(t) # 格式化字符串，对位数不足的二进制数通过前面补0凑齐
-    ranl_s = np.array([int(x) for x in ranb_s]) # 将二进制表示的字符串转成列
+    t = str(bin(rand_s))[2:] # 将随机的十进制数转成二进制/ランダムな10進数を2進数に変換され
+    ranb_s = '{0:0>7}'.format(t) # 格式化字符串，对位数不足的二进制数通过前面补0凑齐/文字列をフォーマットします。桁数が不十分な桁数は0と一致します
+    ranl_s = np.array([int(x) for x in ranb_s]) # 将二进制表示的字符串转成列/文字列のバイナリ表現を列に変換する
     return ranl_s
 
 
@@ -28,20 +28,20 @@ def generate_buylist(context,d_begin,d_len):
     # 根据传入的随机策略，生成并返回要购买的股票列表/ランダム戦略に基づいて購入する銘柄のリストを生成して返す
     l_stock = context.l_stock
     cs = context.current_strategy
-    chooseindex = cs[d_begin:d_begin+d_len] == 1 # 计算因子为1的因子的序号（1表示买入）
+    chooseindex = cs[d_begin:d_begin+d_len] == 1 # 计算因子为1的因子的序号（1表示买入）/因数が1の係数を計算する,1は購入の合図
     l_buy = np.extract(chooseindex,l_stock) # 购买的股票列表/銘柄のリスト
     return l_buy
     
 def generate_tradefreq(context,d_begin,d_len):
-    # 根据传入的随机策略，生成并返回交易的频率
-    l_tradefreq = [1,5,10,15] # 交易频率分为1、5、10、15天，由策略的最后两位因子决定
+    # 根据传入的随机策略，生成并返回交易的频率/ランダム戦略に基づいてトランザクションの頻度を生成して返す
+    l_tradefreq = [1,5,10,15] # 交易频率分为1、5、10、15天，由策略的最后两位因子决定/取引頻度は1、5、10、および15日に分割されます。これは戦略の最後の2つの要因によって決定されます。
     cs = context.current_strategy
     index = ''.join([str(x) for x in cs[d_begin:d_begin+d_len]])
-    tradefreq = l_tradefreq[int(index,2)] # 将最后两位因子表示的二进制数转成十进制，并确定交易频率
+    tradefreq = l_tradefreq[int(index,2)] # 将最后两位因子表示的二进制数转成十进制，并确定交易频率/最後の2つの要素によって表される2進数を10進数に変換し、トレンド頻度を決定します。
     return tradefreq
 
 def compare_return(context):
-    # 比较当前策略和沪深300的收益回报差异
+    # 比较当前策略和沪深300的收益回报差异/平均収益との比較
     tradefreq = generate_tradefreq(context,5,2)
     se_csi300 = history(tradefreq+1,'1d','close')['CSI300.INDX']
     return_index = se_csi300.iloc[-1] / se_csi300.iloc[0] - 1
@@ -51,22 +51,22 @@ def compare_return(context):
     return return_diff
     
 def variation_alghm(x,prob):
-    # 变异算法，根据回报率的差异*10来决定每个因子的变异概率，既差异越高，变异概率越高
+    # 变异算法，根据回报率的差异*10来决定每个因子的变异概率，既差异越高，变异概率越高/突然変異アルゴリズムは、収益率* 10の差に応じて各要素の突然変異確率を決定し、差が大きいほど突然変異確率が高くなります。
     if abs(prob)*10 > random.random():
-        return abs(x-1) # 将0变成1，将1变成0
+        return abs(x-1) # 将0变成1，将1变成0/0を1に、1を0に変更
     else:
         return x
 
 
 def genetic_alghm(context):
-    # 遗传算法主体
+    # 遗传算法主体/GAアルゴリズム本体
     return_diff =  compare_return(context)
     cs = context.current_strategy
     bs = context.best_strategy
     br = context.best_return_diff
     tradefreq = generate_tradefreq(context,5,2)
-    if return_diff/tradefreq >= br: # 如果当前策略的回报差异大于历史最优回报差异
-        # 保留当前策略与历史最优策略相同的因子，其他因子随机生成
+    if return_diff/tradefreq >= br: # 如果当前策略的回报差异大于历史最优回报差异/現在の戦略のリターン差が過去の最適リターン差より大きい場合
+        # 保留当前策略与历史最优策略相同的因子，其他因子随机生成/現在の戦略を過去の最適戦略と同じにする。他の要因はランダムに生成されます。
         ns = generate_strategy()
         c = []
         for i in range(len(bs)):
@@ -76,28 +76,28 @@ def genetic_alghm(context):
         context.best_strategy = context.current_strategy
         context.best_return_diff = return_diff/tradefreq
         context.current_strategy = ns   
-    else: # 否则，则采取历史最优的策略，并且对因子随机进行变异
+    else: # 否则，则采取历史最优的策略，并且对因子随机进行变异/それ以外の場合は、歴史的に最適な戦略を採用し、要因をランダムに変更します
         context.current_strategy = np.array(list(map(variation_alghm,context.best_strategy,[return_diff]*len(context.best_strategy))))
 
 
 def handle_bar(context, bar_dict):
     l_position = []
     context.day_count -= 1
-    if context.day_count  == 0: # 交易频率的确定
+    if context.day_count  == 0: # 交易频率的确定/取引頻度の決定
         for i in context.l_stock.tolist() + context.l_index:
-            # 生成当前的持仓列表
+            # 生成当前的持仓列表/現在のポジションリストを作成する
             if context.portfolio.positions[i].quantity > 0:
                 l_position.append(i)
         if len(l_position) > 0:
-            # 将所有持仓的股票卖出
+            # 将所有持仓的股票卖出/現在のポジションを売る
             for i in l_position:
                 order_target_percent(i,0)
         genetic_alghm(context)
-        logger.info('bs:%s;cs:%s;br:%.2f'%(context.best_strategy,context.current_strategy,context.best_return_diff)) # 分别输出历史最优策略，当前的策略，以及历史最优的回报率差异
+        logger.info('bs:%s;cs:%s;br:%.2f'%(context.best_strategy,context.current_strategy,context.best_return_diff)) # 分别输出历史最优策略，当前的策略，以及历史最优的回报率差异/過去の最適戦略、現在の戦略、および過去の最適収益率の差をそれぞれ出力する
         l_buy = generate_buylist(context,0,5)
         context.day_count = generate_tradefreq(context,5,2)
         if len(l_buy) > 0 and context.portfolio.cash / context.portfolio.starting_cash > 0.05:
-            # 等比例买入策略生成的买入清单
+            # 等比例买入策略生成的买入清单/等比例購買戦略によって生成された購買リスト
             p = round(1/len(l_buy),2)
             for i in l_buy:
                 order_id = order_percent(i, p) 
