@@ -1,0 +1,104 @@
+import numpy as np
+import random
+import pandas as pd
+
+def init(context):
+    context.l_stock = np.array(['600887.XSHG', '600104.XSHG', '601668.XSHG', '600010.XSHG', '600030.XSHG']) # 随机抽取五支股票作为股票池/5つの銘柄をランダムに抽出する
+    context.l_index = ['CSI500.INDX','CSI300.INDX'] # 指数池/指数バックを用意する
+    update_universe(context.l_stock.tolist())
+    update_universe(context.l_index)
+    context.day_count = 1 # 交易天数计数，为了支持交易频率/日数を計算する
+    context.last_return = 0 # 截至上一次交易的累计回报率，为了便于比较/累積収益率
+    context.best_strategy = generate_strategy() # 最优的策略
+    context.best_return_diff = 0 # 最优的回报率差异
+    context.current_strategy = context.best_strategy # 当前策略
+
+def generate_strategy():
+    # 生成随机的策略，并且返回以一维数组存储的策略内容
+    maxb_s = ''.join('1' for x in range(7)) # 生成满足策略长度的最大二进制数，16表示策略长度
+    maxd_s = int(maxb_s,2) # 将最大二进制数转成十进制
+    rand_s = random.randint(0,maxd_s) # 生成低于最大十进制数的一个随机数/ランダム数(>最大十进制数)を生成
+    t = str(bin(rand_s))[2:] # 将随机的十进制数转成二进制
+    ranb_s = '{0:0>7}'.format(t) # 格式化字符串，对位数不足的二进制数通过前面补0凑齐
+    ranl_s = np.array([int(x) for x in ranb_s]) # 将二进制表示的字符串转成列
+    return ranl_s
+
+
+def generate_buylist(context,d_begin,d_len):
+    # 根据传入的随机策略，生成并返回要购买的股票列表/ランダム戦略に基づいて購入する銘柄のリストを生成して返す
+    l_stock = context.l_stock
+    cs = context.current_strategy
+    chooseindex = cs[d_begin:d_begin+d_len] == 1 # 计算因子为1的因子的序号（1表示买入）
+    l_buy = np.extract(chooseindex,l_stock) # 购买的股票列表/銘柄のリスト
+    return l_buy
+    
+def generate_tradefreq(context,d_begin,d_len):
+    # 根据传入的随机策略，生成并返回交易的频率
+    l_tradefreq = [1,5,10,15] # 交易频率分为1、5、10、15天，由策略的最后两位因子决定
+    cs = context.current_strategy
+    index = ''.join([str(x) for x in cs[d_begin:d_begin+d_len]])
+    tradefreq = l_tradefreq[int(index,2)] # 将最后两位因子表示的二进制数转成十进制，并确定交易频率
+    return tradefreq
+
+def compare_return(context):
+    # 比较当前策略和沪深300的收益回报差异
+    tradefreq = generate_tradefreq(context,5,2)
+    se_csi300 = history(tradefreq+1,'1d','close')['CSI300.INDX']
+    return_index = se_csi300.iloc[-1] / se_csi300.iloc[0] - 1
+    return_strategy = context.portfolio.total_returns - context.last_return
+    context.last_return = context.portfolio.total_returns
+    return_diff = return_strategy - return_index
+    return return_diff
+    
+def variation_alghm(x,prob):
+    # 变异算法，根据回报率的差异*10来决定每个因子的变异概率，既差异越高，变异概率越高
+    if abs(prob)*10 > random.random():
+        return abs(x-1) # 将0变成1，将1变成0
+    else:
+        return x
+
+
+def genetic_alghm(context):
+    # 遗传算法主体
+    return_diff =  compare_return(context)
+    cs = context.current_strategy
+    bs = context.best_strategy
+    br = context.best_return_diff
+    tradefreq = generate_tradefreq(context,5,2)
+    if return_diff/tradefreq >= br: # 如果当前策略的回报差异大于历史最优回报差异
+        # 保留当前策略与历史最优策略相同的因子，其他因子随机生成
+        ns = generate_strategy()
+        c = []
+        for i in range(len(bs)):
+            if bs[i] == cs[i]:
+                c.append(i)
+        ns[c] = bs[c]
+        context.best_strategy = context.current_strategy
+        context.best_return_diff = return_diff/tradefreq
+        context.current_strategy = ns   
+    else: # 否则，则采取历史最优的策略，并且对因子随机进行变异
+        context.current_strategy = np.array(list(map(variation_alghm,context.best_strategy,[return_diff]*len(context.best_strategy))))
+
+
+def handle_bar(context, bar_dict):
+    l_position = []
+    context.day_count -= 1
+    if context.day_count  == 0: # 交易频率的确定
+        for i in context.l_stock.tolist() + context.l_index:
+            # 生成当前的持仓列表
+            if context.portfolio.positions[i].quantity > 0:
+                l_position.append(i)
+        if len(l_position) > 0:
+            # 将所有持仓的股票卖出
+            for i in l_position:
+                order_target_percent(i,0)
+        genetic_alghm(context)
+        logger.info('bs:%s;cs:%s;br:%.2f'%(context.best_strategy,context.current_strategy,context.best_return_diff)) # 分别输出历史最优策略，当前的策略，以及历史最优的回报率差异
+        l_buy = generate_buylist(context,0,5)
+        context.day_count = generate_tradefreq(context,5,2)
+        if len(l_buy) > 0 and context.portfolio.cash / context.portfolio.starting_cash > 0.05:
+            # 等比例买入策略生成的买入清单
+            p = round(1/len(l_buy),2)
+            for i in l_buy:
+                order_id = order_percent(i, p) 
+                obj_order = get_order(order_id)
